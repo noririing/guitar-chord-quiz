@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ギターコード構成音チェック</title>
+  <style>
+    :root {
+      --bg: #f5f3ee;
+      --card: #ffffff;
+      --text: #222;
+      --muted: #777;
+      --accent: #c0582b;
+      --major: #2b6cb0;
+      --minor: #8a3ab9;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #1b1b1d;
+        --card: #26262a;
+        --text: #eee;
+        --muted: #999;
+        --accent: #e07a4a;
+        --major: #63a4ec;
+        --minor: #c48ae6;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", sans-serif;
+      padding: 16px;
+    }
+    .card {
+      width: 100%;
+      max-width: 420px;
+      background: var(--card);
+      border-radius: 16px;
+      padding: 32px 24px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+      text-align: center;
+    }
+    h1 {
+      font-size: 1rem;
+      color: var(--muted);
+      margin: 0 0 24px;
+      font-weight: normal;
+    }
+    .question {
+      font-size: 1.4rem;
+      margin-bottom: 24px;
+    }
+    .question .root {
+      display: block;
+      font-size: 5rem;
+      font-weight: bold;
+      color: var(--accent);
+      line-height: 1.1;
+    }
+    .answer {
+      min-height: 140px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      justify-content: center;
+    }
+    .answer.hidden .row { visibility: hidden; }
+    .row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      border-radius: 10px;
+      background: var(--bg);
+    }
+    .row .name { font-weight: bold; font-size: 1.1rem; }
+    .row .notes { font-size: 1.5rem; letter-spacing: 0.1em; }
+    .row.major .name { color: var(--major); }
+    .row.minor .name { color: var(--minor); }
+    button {
+      margin-top: 24px;
+      width: 100%;
+      padding: 14px;
+      font-size: 1.1rem;
+      border: none;
+      border-radius: 10px;
+      background: var(--accent);
+      color: #fff;
+      cursor: pointer;
+    }
+    button:active { transform: scale(0.98); }
+    .hint {
+      margin-top: 12px;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+    .count {
+      margin-top: 8px;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <h1>ギターコード構成音チェック</h1>
+
+    <div class="question">
+      <span class="root" id="root">C</span>
+      コードの構成音は？
+    </div>
+
+    <div class="answer hidden" id="answer">
+      <div class="row major">
+        <span class="name" id="majorName">C</span>
+        <span class="notes" id="majorNotes">C E G</span>
+      </div>
+      <div class="row minor">
+        <span class="name" id="minorName">Cm</span>
+        <span class="notes" id="minorNotes">C E♭ G</span>
+      </div>
+    </div>
+
+    <button id="btn">答えを見る</button>
+    <div class="hint">スペース / Enter キーでも操作できます</div>
+    <div class="count" id="count"></div>
+  </main>
+
+  <script>
+    // 各ルート音のメジャー・マイナーの構成音（ルート, 3度, 5度）
+    const CHORDS = {
+      C: { major: ["C", "E", "G"],   minor: ["C", "E♭", "G"] },
+      D: { major: ["D", "F♯", "A"],  minor: ["D", "F", "A"] },
+      E: { major: ["E", "G♯", "B"],  minor: ["E", "G", "B"] },
+      F: { major: ["F", "A", "C"],   minor: ["F", "A♭", "C"] },
+      G: { major: ["G", "B", "D"],   minor: ["G", "B♭", "D"] },
+      A: { major: ["A", "C♯", "E"],  minor: ["A", "C", "E"] },
+      B: { major: ["B", "D♯", "F♯"], minor: ["B", "D", "F♯"] },
+    };
+    const ROOTS = Object.keys(CHORDS);
+
+    const rootEl = document.getElementById("root");
+    const answerEl = document.getElementById("answer");
+    const btn = document.getElementById("btn");
+    const countEl = document.getElementById("count");
+
+    let current = null;
+    let revealed = false;
+    let count = 0;
+
+    // シャッフルバッグ方式: 7つを1セットとしてシャッフルし、全部出し切ったら再シャッフル
+    // → 7問ごとに必ず全ルートが1回ずつ出題される
+    let bag = [];
+
+    function shuffle(array) {
+      for (let i = array.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [array[i], array[j]] = [array[j], array[i]];
+      }
+      return array;
+    }
+
+    function pickRoot() {
+      if (bag.length === 0) {
+        bag = shuffle([...ROOTS]);
+        // セットの切り替わりで直前と同じ問題が続かないようにする
+        if (bag[bag.length - 1] === current) {
+          [bag[0], bag[bag.length - 1]] = [bag[bag.length - 1], bag[0]];
+        }
+      }
+      return bag.pop();
+    }
+
+    function newQuestion() {
+      current = pickRoot();
+      const chord = CHORDS[current];
+      rootEl.textContent = current;
+      document.getElementById("majorName").textContent = current;
+      document.getElementById("majorNotes").textContent = chord.major.join(" ");
+      document.getElementById("minorName").textContent = current + "m";
+      document.getElementById("minorNotes").textContent = chord.minor.join(" ");
+      answerEl.classList.add("hidden");
+      btn.textContent = "答えを見る";
+      revealed = false;
+      count++;
+      countEl.textContent = `${count} 問目`;
+    }
+
+    function next() {
+      if (revealed) {
+        newQuestion();
+      } else {
+        answerEl.classList.remove("hidden");
+        btn.textContent = "次の問題";
+        revealed = true;
+      }
+    }
+
+    btn.addEventListener("click", next);
+    document.addEventListener("keydown", (e) => {
+      if (e.key === " " || e.key === "Enter") {
+        e.preventDefault();
+        next();
+      }
+    });
+
+    newQuestion();
+  </script>
+</body>
+</html>
